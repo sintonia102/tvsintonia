@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google TV App</title>
+
+    <!-- Importación de la librería hls.js para reproducir streams HLS -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <style>
+        /* Reseteo básico para eliminar márgenes y paddings por defecto */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Evita barras de scroll */
+            background-color: #000; /* Fondo negro por si el video no carga */
+            font-family: Arial, sans-serif;
+        }
+
+        /* 
+           Estilos para el reproductor de video.
+           Asegura que el video ocupe toda la pantalla.
+           object-fit: cover; maneja la relación de aspecto sin dejar bordes.
+        */
+        #videoPlayer {
+            width: 100vw; /* 100% del ancho de la ventana */
+            height: 100vh; /* 100% del alto de la ventana */
+            object-fit: cover;
+            background-color: #000;
+        }
+
+        /* 
+           Contenedor para la información del canal (el cuadro flotante).
+           Posicionado en el centro de la pantalla.
+        */
+        #channel-info {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7); /* Fondo semitransparente */
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            font-size: 48px; /* Texto grande y legible a distancia */
+            text-align: center;
+            transition: opacity 0.5s ease-in-out; /* Transición suave para aparecer/desaparecer */
+            z-index: 1000;
+            pointer-events: none; /* Evita que el overlay intercepte clics */
+        }
+
+        /* 
+           Clase para ocultar el indicador de canal.
+           Simplemente lo hace totalmente transparente.
+        */
+        #channel-info.hidden {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Elemento de video donde se reproducirán los canales -->
+    <video id="videoPlayer" autoplay></video>
+
+    <!-- Overlay para mostrar el nombre del canal al cambiar -->
+    <div id="channel-info" class="hidden">
+        <p id="channel-name"></p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 1. CONFIGURACIÓN INICIAL ---
+
+            // Referencias a los elementos del DOM
+            const videoElement = document.getElementById('videoPlayer');
+            const channelInfo = document.getElementById('channel-info');
+            const channelNameElement = document.getElementById('channel-name');
+
+            // Definición de los canales fijos
+            const channels = [
+                {
+                    name: "SAE Canal",
+                    url: "https://sae11.playlist.live-video.net/v1/playlist/CssFNDy9bTZb6rNhCr7SXbXJvfPPGhhLJVHhFMHXnYcbFQeQrgOSZD-GUrCziHoiFzqfVt4hu9BHqn0nW6-BRY_3lIMZbFUqCjkOHi7n0gWrknY_1l2_Rt7lrL4l-Z9gnNoxRRQW1Qt8Q5Bgk9rF48fZ6qMyOREPSrT-R4T35Ew9eUVCb69wS2MM6ydq3EQ0YDQrVWvqllYRZgD6gn44NtMvq3QGYEo6ixdNbA3taq63fPQVkGl_hHxEnsfB6RWjmehNrkGxQ5ZdGH7M4jCDXfjUq96_vzyTmEAD1ipPLhO8p0nkFPS2izspQdeFO92tOF6y4OOIGGexh7cb9kp0dFdf4OMg8Ub9xy5FQ8sq_nvC50Jjck3Z60yNoQ5elZrrd8a1ExIK8EVEL5i9SdjJexH-sSjaOSwiXlC0xFq27_sPobcqROER_93LmOzAMvpJT49gIxerwNVTXTwQf7yFzeU-Iu1tvhXG7amP_Anp22wijZX1quEGkbS55x_WIeNd35kgOGgF3zve8N7LasLsC0qVoUWAOOg0bUcrSYN-yDA7hwp5xfubVAEu9gVCLT-l2kwsF4QhgrfYCiR8rgzUwRl-EqgDXRvzVUYPzZ12K_Wb4xrxw7ye9unL46T-lfTMQ4Hc-gjOUasKTnxKRRsqF5Xgy1Dp9GLuvlEF3m0lvJ7_UQof71cYkE_dvRwhuf3SCIe7OPA5UpOlg7YbYbYrCSHgOWAxAEFCY2lu1yadQYQQjzvrRdXEyv6gKLbWNT7qwStWpGwdG9LHCWg9tNVWgyXetHc7lEJH-59gP5460KFYG5JwukWb03zdGPzaq9d9eIBcc3O5LAhPNAajFWW7MKl6XZ1z7GRRBoHDoPeCdzs19nGPgiqWR4oJ3Ef5i_TAXapxZyK7fYpDorbnid1MOlTaEs4F9cQqhk37BFa_-_sDIzJhlazzKnKxCVZfZRoM-30Qe6_BHNx1Kgi4IAEqCXVzLWVhc3QtMjDgDA.m3u8",
+                    type: "hls"
+                },
+                {
+                    name: "Sintonía TV",
+                    url: "https://stream-cdn-iad3.vaughnsoft.net/play/live_sintonia.flv",
+                    type: "flv"
+                }
+            ];
+
+            let currentChannelIndex = 0;
+            let hls = null;
+            let channelInfoTimeout;
+
+            // --- 2. LÓGICA DEL REPRODUCTOR DE VIDEO ---
+
+            /**
+             * Muestra un indicador visual con el nombre del canal y lo oculta después de un tiempo.
+             * @param {string} name - El nombre del canal a mostrar.
+             */
+            function showChannelInfo(name) {
+                if (channelInfoTimeout) {
+                    clearTimeout(channelInfoTimeout);
+                }
+
+                channelNameElement.textContent = name;
+                channelInfo.classList.remove('hidden');
+
+                channelInfoTimeout = setTimeout(() => {
+                    channelInfo.classList.add('hidden');
+                }, 3000);
+            }
+
+            /**
+             * Carga y reproduce un canal basado en su índice en el array 'channels'.
+             * @param {number} index - El índice del canal a cargar.
+             */
+            function loadChannel(index) {
+                const channel = channels[index];
+                console.log(`Cargando canal: ${channel.name} (${channel.type})`);
+
+                // Destruye la instancia anterior de HLS si existe
+                if (hls) {
+                    hls.destroy();
+                    hls = null;
+                }
+
+                if (channel.type === 'hls' && Hls.isSupported()) {
+                    // Lógica para HLS
+                    hls = new Hls();
+                    hls.loadSource(channel.url);
+                    hls.attachMedia(videoElement);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        videoElement.play().catch(e => console.error("Error al intentar reproducir HLS:", e));
+                    });
+                    hls.on(Hls.Events.ERROR, function (event, data) {
+                        if (data.fatal) {
+                            console.error('Error fatal de HLS:', data);
+                        }
+                    });
+                } else if (channel.type === 'flv') {
+                    // Lógica para FLV
+                    // ADVERTENCIA: El soporte nativo para FLV es inexistente en navegadores modernos.
+                    console.warn("Intentando cargar un canal FLV. Es muy probable que no funcione.");
+                    videoElement.src = channel.url;
+                    channelNameElement.textContent = `${channel.name}\n(Formato no soportado)`; // Actualiza el mensaje
+                    videoElement.play().catch(e => {
+                        console.error("Error al reproducir el stream FLV. Como se esperaba, el formato no es compatible.");
+                        // Mostramos el indicador con una advertencia
+                        showChannelInfo(`${channel.name}\n(Formato no compatible)`);
+                    });
+                } else {
+                    if (channel.type === 'hls') {
+                       console.error("Este navegador no soporta HLS a través de hls.js.");
+                       showChannelInfo("Error: HLS no soportado");
+                    }
+                }
+                
+                // Muestra el indicador con el nombre del canal, incluso si falla la carga.
+                showChannelInfo(channel.name);
+            }
+
+            // --- 3. MANEJO DE EVENTOS DEL CONTROL REMOTO ---
+
+            /**
+             * Maneja los eventos de teclado para cambiar de canal.
+             * @param {KeyboardEvent} e - El objeto del evento de teclado.
+             */
+            function handleRemoteControl(e) {
+                // e.key es el estándar moderno. keyCode es por compatibilidad con dispositivos más antiguos.
+                const key = e.key || e.keyCode;
+                let newIndex = currentChannelIndex;
+                const totalChannels = channels.length;
+
+                // Mapeo de teclas comunes en controles remotos
+                switch (key) {
+                    case 'ArrowUp':
+                    case 'ChannelUp': // Estándar W3C para TV
+                    case 33: // Page Up (a veces usado para Channel Up)
+                        newIndex++;
+                        if (newIndex >= totalChannels) newIndex = 0; // Cíclico
+                        break;
+                    
+                    case 'ArrowDown':
+                    case 'ChannelDown': // Estándar W3C para TV
+                    case 34: // Page Down (a veces usado para Channel Down)
+                        newIndex--;
+                        if (newIndex < 0) newIndex = totalChannels - 1; // Cíclico
+                        break;
+                    
+                    default:
+                        return; // Salir si no es una tecla de interés
+                }
+                
+                e.preventDefault(); // Evita el comportamiento por defecto del navegador (ej. scroll)
+
+                if (newIndex !== currentChannelIndex) {
+                    currentChannelIndex = newIndex;
+                    loadChannel(currentChannelIndex);
+                }
+            }
+
+            // Asigna el manejador de eventos al documento
+            document.addEventListener('keydown', handleRemoteControl);
+
+            // --- 4. INICIO DE LA APLICACIÓN ---
+            
+            // Carga el primer canal automáticamente al iniciar
+            loadChannel(currentChannelIndex);
+        });
+    </script>
+
+</body>
+</html>

@@ -2,128 +2,224 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>TV App - Canales Originales</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV Online para Android TV</title>
+    
+    <!-- Librería para reproducir video HLS -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; font-family: sans-serif; }
-        #videoPlayer { width: 100%; height: 100%; }
-        #debug { position: fixed; bottom: 0; left: 0; background: rgba(0,0,0,0.6); color: white; padding: 10px; font-size: 16px; z-index: 1000; max-width: 100%; }
-        #channel-name-display { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: white; padding: 15px 30px; font-size: 32px; z-index: 999; border-radius: 10px; opacity: 0; transition: opacity 0.5s; }
-        #channel-name-display.visible { opacity: 1; }
+        /* Estilos para que la app ocupe toda la pantalla y se vea bien en TV */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        #video-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        #videoPlayer {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Asegura que el video llene la pantalla */
+        }
+        /* Overlay para mostrar información en pantalla */
+        .screen-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 10;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+        .screen-overlay.hidden {
+            display: none;
+        }
+        /* Estilo para el mensaje de estado o error */
+        #status-message {
+            font-size: 32px;
+            text-align: center;
+        }
+        /* Estilo para el nombre del canal al cambiar */
+        #channel-info {
+            position: absolute;
+            top: 5%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 10px 30px;
+            border-radius: 8px;
+            font-size: 28px;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.4s ease-in-out;
+        }
+        #channel-info.visible {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
-    <video id="videoPlayer"></video>
-    <div id="channel-name-display"></div>
-    <div id="debug">Iniciando aplicación...</div>
+
+    <div id="video-container">
+        <video id="videoPlayer"></video>
+        
+        <!-- Overlay para mostrar mensajes de estado (ej. "Cargando...") o errores -->
+        <div id="status-overlay" class="screen-overlay hidden">
+            <p id="status-message"></p>
+        </div>
+
+        <!-- Overlay para mostrar el nombre del canal temporalmente -->
+        <div id="channel-info"></div>
+    </div>
 
     <script>
+        // Todo el código se ejecuta cuando la página ha cargado completamente
         window.onload = function() {
-            const video = document.getElementById('videoPlayer');
-            const debug = document.getElementById('debug');
-            const channelNameDisplay = document.getElementById('channel-name-display');
+            
+            // --- ELEMENTOS DE LA PÁGINA ---
+            const videoElement = document.getElementById('videoPlayer');
+            const statusOverlay = document.getElementById('status-overlay');
+            const statusMessage = document.getElementById('status-message');
+            const channelInfo = document.getElementById('channel-info');
 
-            // --- TUS CANALES ORIGINALES ---
+            // --- LISTA DE CANALES ---
+            // Los dos primeros son los tuyos. El tercero es para demostrar que la app funciona.
             const channels = [
                 {
-                    name: "SAE Canal (HLS)",
+                    name: "1. SAE Canal",
                     url: "https://sae11.playlist.live-video.net/v1/playlist/CssFNDy9bTZb6rNhCr7SXbXJvfPPGhhLJVHhFMHXnYcbFQeQrgOSZD-GUrCziHoiFzqfVt4hu9BHqn0nW6-BRY_3lIMZbFUqCjkOHi7n0gWrknY_1l2_Rt7lrL4l-Z9gnNoxRRQW1Qt8Q5Bgk9rF48fZ6qMyOREPSrT-R4T35Ew9eUVCb69wS2MM6ydq3EQ0YDQrVWvqllYRZgD6gn44NtMvq3QGYEo6ixdNbA3taq63fPQVkGl_hHxEnsfB6RWjmehNrkGxQ5ZdGH7M4jCDXfjUq96_vzyTmEAD1ipPLhO8p0nkFPS2izspQdeFO92tOF6y4OOIGGexh7cb9kp0dFdf4OMg8Ub9xy5FQ8sq_nvC50Jjck3Z60yNoQ5elZrrd8a1ExIK8EVEL5i9SdjJexH-sSjaOSwiXlC0xFq27_sPobcqROER_93LmOzAMvpJT49gIxerwNVTXTwQf7yFzeU-Iu1tvhXG7amP_Anp22wijZX1quEGkbS55x_WIeNd35kgOGgF3zve8N7LasLsC0qVoUWAOOg0bUcrSYN-yDA7hwp5xfubVAEu9gVCLT-l2kwsF4QhgrfYCiR8rgzUwRl-EqgDXRvzVUYPzZ12K_Wb4xrxw7ye9unL46T-lfTMQ4Hc-gjOUasKTnxKRRsqF5Xgy1Dp9GLuvlEF3m0lvJ7_UQof71cYkE_dvRwhuf3SCIe7OPA5UpOlg7YbYbYrCSHgOWAxAEFCY2lu1yadQYQQjzvrRdXEyv6gKLbWNT7qwStWpGwdG9LHCWg9tNVWgyXetHc7lEJH-59gP5460KFYG5JwukWb03zdGPzaq9d9eIBcc3O5LAhPNAajFWW7MKl6XZ1z7GRRBoHDoPeCdzs19nGPgiqWR4oJ3Ef5i_TAXapxZyK7fYpDorbnid1MOlTaEs4F9cQqhk37BFa_-_sDIzJhlazzKnKxCVZfZRoM-30Qe6_BHNx1Kgi4IAEqCXVzLWVhc3QtMjDgDA.m3u8",
                     type: "hls"
                 },
                 {
-                    name: "Sintonía TV (FLV)",
+                    name: "2. Sintonía TV",
                     url: "https://stream-cdn-iad3.vaughnsoft.net/play/live_sintonia.flv",
                     type: "flv"
+                },
+                {
+                    name: "3. France 24 (Canal de Prueba)",
+                    url: "https://f24.live.streaming.meta.com/Content/HLS/Live/channel(fra24_en)/index.m3u8",
+                    type: "hls"
                 }
             ];
+            
             let currentChannelIndex = 0;
             let hls = null;
-            let channelNameTimeout;
+            let channelInfoTimeout;
 
-            function log(message) {
-                console.log(message);
-                debug.textContent = message;
+            // --- FUNCIONES PRINCIPALES ---
+
+            // Muestra un mensaje de estado o error en el centro de la pantalla
+            function showStatus(message) {
+                statusMessage.textContent = message;
+                statusOverlay.classList.remove('hidden');
             }
 
-            function showChannelName(name) {
-                if (channelNameTimeout) clearTimeout(channelNameTimeout);
-                channelNameDisplay.textContent = name;
-                channelNameDisplay.classList.add('visible');
-                channelNameTimeout = setTimeout(() => {
-                    channelNameDisplay.classList.remove('visible');
+            // Muestra el nombre del canal arriba y lo oculta después de unos segundos
+            function showChannelInfo(name) {
+                clearTimeout(channelInfoTimeout);
+                channelInfo.textContent = name;
+                channelInfo.classList.add('visible');
+                channelInfoTimeout = setTimeout(() => {
+                    channelInfo.classList.remove('visible');
                 }, 3000);
             }
 
-            if (typeof Hls === 'undefined') {
-                log("ERROR CRÍTICO: La librería de video (hls.js) no se cargó.");
-                return;
-            }
-
+            // Función para cargar y reproducir un canal
             function loadChannel(index) {
-                const channel = channels[index];
                 currentChannelIndex = index;
-                showChannelName(`${index + 1}. ${channel.name}`);
+                const channel = channels[index];
                 
+                showChannelInfo(channel.name);
+                showStatus(`Cargando: ${channel.name}...`); // Muestra "Cargando..."
+                
+                // Limpia la instancia anterior del reproductor si existe
                 if (hls) {
                     hls.destroy();
                 }
+                
+                // --- DIAGNÓSTICO Y CARGA DEL CANAL ---
 
-                // --- LÓGICA DE DIAGNÓSTICO ---
+                // Caso 1: Canal FLV (obsoleto)
                 if (channel.type === 'flv') {
-                    log("ERROR: El formato FLV no es compatible con navegadores modernos. Imposible reproducir.");
-                    video.src = ""; // Limpia el reproductor
+                    showStatus("Error: El formato de video FLV no es compatible con este dispositivo.");
                     return;
                 }
 
+                // Caso 2: Canal HLS
                 if (channel.type === 'hls') {
                     if (Hls.isSupported()) {
-                        log(`Intentando cargar HLS: ${channel.name}`);
                         hls = new Hls();
-                        hls.attachMedia(video);
                         hls.loadSource(channel.url);
+                        hls.attachMedia(videoElement);
 
+                        // Evento que se dispara cuando el video empieza a reproducirse
                         hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                            log("Canal HLS cargado. Intentando reproducir...");
-                            video.muted = true;
-                            video.play().catch(e => log(`Error de autoplay: ${e.message}`));
+                            videoElement.muted = true; // El mute es crucial para el autoplay en TVs
+                            videoElement.play();
+                            statusOverlay.classList.add('hidden'); // Oculta el mensaje de "Cargando..."
                         });
 
+                        // Evento que se dispara si hay un error
                         hls.on(Hls.Events.ERROR, function(event, data) {
                             if (data.fatal) {
-                                // ESTE ES EL ERROR QUE PROBABLEMENTE VERÁS
-                                if (data.details === 'manifestLoadError' || data.type === 'networkError') {
-                                    log("ERROR DE RED (CORS): El servidor del canal no dio permiso para cargarlo desde esta página.");
+                                if (data.type === 'networkError') {
+                                    showStatus("Error de Permiso (CORS)\n\nEl servidor de este canal no permite que se vea desde aquí.");
                                 } else {
-                                    log(`Error fatal de HLS: ${data.details}`);
+                                    showStatus(`Error al cargar el canal:\n${data.details}`);
                                 }
                             }
                         });
                     } else {
-                        log("ERROR: HLS no es compatible con este navegador.");
+                        showStatus("Error: Este dispositivo no es compatible con la tecnología de video HLS.");
                     }
                 }
             }
 
-            document.addEventListener('keydown', function(e) {
-                const totalChannels = channels.length;
+            // --- MANEJO DEL CONTROL REMOTO ---
+            document.addEventListener('keydown', function(event) {
                 let newIndex = currentChannelIndex;
+                const totalChannels = channels.length;
 
-                if (e.key === 'ArrowUp' || e.key === 'ChannelUp') {
-                    newIndex = (currentChannelIndex + 1) % totalChannels;
-                } else if (e.key === 'ArrowDown' || e.key === 'ChannelDown') {
-                    newIndex = (currentChannelIndex - 1 + totalChannels) % totalChannels;
-                } else {
-                    return;
+                // Detecta las teclas de flecha arriba y abajo
+                switch (event.key) {
+                    case 'ArrowUp':
+                    case 'ChannelUp': // Tecla estándar para subir canal
+                        newIndex = (currentChannelIndex + 1) % totalChannels; // Va al siguiente, o al primero si está en el último
+                        break;
+                    case 'ArrowDown':
+                    case 'ChannelDown': // Tecla estándar para bajar canal
+                        newIndex = (currentChannelIndex - 1 + totalChannels) % totalChannels; // Va al anterior, o al último si está en el primero
+                        break;
+                    default:
+                        return; // Si no es una tecla de flecha, no hace nada
                 }
                 
+                // Si el canal es diferente, lo carga
                 if (newIndex !== currentChannelIndex) {
                     loadChannel(newIndex);
                 }
             });
-            
-            // Carga inicial del primer canal
+
+            // --- INICIO DE LA APLICACIÓN ---
+            // Carga el primer canal de tu lista al abrir la página
             loadChannel(0);
         };
     </script>
+
 </body>
 </html>

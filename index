@@ -3,84 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google TV App</title>
+    <title>Google TV App Plus</title>
 
     <!-- Importación de la librería hls.js para reproducir streams HLS -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
+    <!-- Importación de la fuente Roboto de Google Fonts para un mejor look & feel -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
+
     <style>
-        /* Reseteo básico para eliminar márgenes y paddings por defecto */
+        /* Reseteo básico y fondo mejorado */
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            overflow: hidden; /* Evita barras de scroll */
-            background-color: #000; /* Fondo negro por si el video no carga */
-            font-family: Arial, sans-serif;
+            overflow: hidden;
+            /* Gradiente radial sutil en lugar de negro sólido */
+            background: radial-gradient(ellipse at center, #2c2c2c 0%, #000000 100%);
+            font-family: 'Roboto', sans-serif;
         }
 
-        /* 
-           Estilos para el reproductor de video.
-           Asegura que el video ocupe toda la pantalla.
-           object-fit: cover; maneja la relación de aspecto sin dejar bordes.
-        */
+        /* El reproductor de video sigue ocupando toda la pantalla */
         #videoPlayer {
-            width: 100vw; /* 100% del ancho de la ventana */
-            height: 100vh; /* 100% del alto de la ventana */
+            width: 100vw;
+            height: 100vh;
             object-fit: cover;
-            background-color: #000;
+            background-color: transparent; /* Permite ver el gradiente del body si el video no carga */
         }
 
-        /* 
-           Contenedor para la información del canal (el cuadro flotante).
-           Posicionado en el centro de la pantalla.
-        */
+        /* --- Mejoras Visuales del Overlay de Canal --- */
         #channel-info {
+            position: absolute;
+            top: 8%; /* Posicionado más arriba, estilo TV */
+            left: 50%;
+            transform: translateX(-50%) scale(0.95); /* Posición inicial para la animación */
+            background-color: rgba(20, 20, 20, 0.85);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 42px;
+            font-weight: 500;
+            /* Sombra de texto para mejorar legibilidad sobre cualquier video */
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            /* Transición suave para la animación de entrada/salida */
+            transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+        }
+
+        /* Clase para mostrar el indicador con animación */
+        #channel-info.visible {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        /* --- Indicador de Carga (Spinner) --- */
+        .loader {
             position: absolute;
             top: 50%;
             left: 50%;
+            width: 60px;
+            height: 60px;
+            border: 7px solid #f3f3f3;
+            border-top: 7px solid #3498db; /* Color azul para el spinner */
+            border-radius: 50%;
+            z-index: 1001; /* Por encima de todo */
+            /* Animación de giro */
+            animation: spin 1s linear infinite;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.7); /* Fondo semitransparente */
-            color: white;
-            padding: 20px 40px;
-            border-radius: 10px;
-            font-size: 48px; /* Texto grande y legible a distancia */
-            text-align: center;
-            transition: opacity 0.5s ease-in-out; /* Transición suave para aparecer/desaparecer */
-            z-index: 1000;
-            pointer-events: none; /* Evita que el overlay intercepte clics */
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .loader.visible {
+            opacity: 1;
         }
 
-        /* 
-           Clase para ocultar el indicador de canal.
-           Simplemente lo hace totalmente transparente.
-        */
-        #channel-info.hidden {
-            opacity: 0;
+        /* Definición de la animación de giro */
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
     </style>
 </head>
 <body>
 
-    <!-- Elemento de video donde se reproducirán los canales -->
+    <!-- Elemento de video -->
     <video id="videoPlayer" autoplay></video>
 
-    <!-- Overlay para mostrar el nombre del canal al cambiar -->
-    <div id="channel-info" class="hidden">
-        <p id="channel-name"></p>
+    <!-- Indicador de Carga (Spinner) -->
+    <div id="loader" class="loader"></div>
+
+    <!-- Overlay de información del canal -->
+    <div id="channel-info">
+        <span id="channel-name"></span>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- 1. CONFIGURACIÓN INICIAL ---
-
-            // Referencias a los elementos del DOM
             const videoElement = document.getElementById('videoPlayer');
             const channelInfo = document.getElementById('channel-info');
             const channelNameElement = document.getElementById('channel-name');
+            const loader = document.getElementById('loader');
 
-            // Definición de los canales fijos
             const channels = [
                 {
                     name: "SAE Canal",
@@ -98,107 +128,95 @@
             let hls = null;
             let channelInfoTimeout;
 
-            // --- 2. LÓGICA DEL REPRODUCTOR DE VIDEO ---
+            // --- 2. LÓGICA DE REPRODUCTOR Y UI ---
 
-            /**
-             * Muestra un indicador visual con el nombre del canal y lo oculta después de un tiempo.
-             * @param {string} name - El nombre del canal a mostrar.
-             */
-            function showChannelInfo(name) {
+            function showLoader() { loader.classList.add('visible'); }
+            function hideLoader() { loader.classList.remove('visible'); }
+            
+            function showChannelInfo(name, number) {
                 if (channelInfoTimeout) {
                     clearTimeout(channelInfoTimeout);
                 }
+                
+                let displayText = `${number}. ${name}`;
+                if (name.includes("no compatible")) {
+                    displayText = `${number}. ${name}`;
+                }
 
-                channelNameElement.textContent = name;
-                channelInfo.classList.remove('hidden');
+                channelNameElement.textContent = displayText;
+                channelInfo.classList.add('visible');
 
                 channelInfoTimeout = setTimeout(() => {
-                    channelInfo.classList.add('hidden');
-                }, 3000);
+                    channelInfo.classList.remove('visible');
+                }, 3500); // Un poco más de tiempo en pantalla
             }
 
-            /**
-             * Carga y reproduce un canal basado en su índice en el array 'channels'.
-             * @param {number} index - El índice del canal a cargar.
-             */
             function loadChannel(index) {
                 const channel = channels[index];
-                console.log(`Cargando canal: ${channel.name} (${channel.type})`);
+                const channelNumber = index + 1;
+                showChannelInfo(channel.name, channelNumber);
+                showLoader();
 
-                // Destruye la instancia anterior de HLS si existe
                 if (hls) {
                     hls.destroy();
                     hls = null;
                 }
 
                 if (channel.type === 'hls' && Hls.isSupported()) {
-                    // Lógica para HLS
-                    hls = new Hls();
+                    hls = new Hls({
+                        // Empieza a cargar el video un poco antes para un inicio más rápido
+                        fragLoadingMaxRetry: 4,
+                        manifestLoadingMaxRetry: 4
+                    });
                     hls.loadSource(channel.url);
                     hls.attachMedia(videoElement);
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        videoElement.play().catch(e => console.error("Error al intentar reproducir HLS:", e));
-                    });
-                    hls.on(Hls.Events.ERROR, function (event, data) {
+                    hls.on(Hls.Events.ERROR, (event, data) => {
                         if (data.fatal) {
-                            console.error('Error fatal de HLS:', data);
+                            console.error('Error fatal de HLS:', data.type, data.details);
+                            hideLoader();
                         }
                     });
                 } else if (channel.type === 'flv') {
-                    // Lógica para FLV
-                    // ADVERTENCIA: El soporte nativo para FLV es inexistente en navegadores modernos.
-                    console.warn("Intentando cargar un canal FLV. Es muy probable que no funcione.");
+                    console.warn("Intentando cargar FLV. Es muy probable que no funcione.");
                     videoElement.src = channel.url;
-                    channelNameElement.textContent = `${channel.name}\n(Formato no soportado)`; // Actualiza el mensaje
-                    videoElement.play().catch(e => {
-                        console.error("Error al reproducir el stream FLV. Como se esperaba, el formato no es compatible.");
-                        // Mostramos el indicador con una advertencia
-                        showChannelInfo(`${channel.name}\n(Formato no compatible)`);
-                    });
+                    showChannelInfo(`${channel.name} (Formato no compatible)`, channelNumber);
                 } else {
-                    if (channel.type === 'hls') {
-                       console.error("Este navegador no soporta HLS a través de hls.js.");
-                       showChannelInfo("Error: HLS no soportado");
-                    }
+                    console.error("HLS no es soportado en este navegador.");
+                    showChannelInfo("Error: HLS no soportado", channelNumber);
+                    hideLoader();
                 }
-                
-                // Muestra el indicador con el nombre del canal, incluso si falla la carga.
-                showChannelInfo(channel.name);
             }
 
-            // --- 3. MANEJO DE EVENTOS DEL CONTROL REMOTO ---
+            // --- 3. MANEJO DE EVENTOS ---
+            
+            // Eventos del reproductor para manejar el spinner
+            videoElement.addEventListener('playing', hideLoader);
+            videoElement.addEventListener('waiting', showLoader);
+            videoElement.addEventListener('error', () => {
+                hideLoader();
+                console.error("Error en el elemento de video.");
+            });
 
-            /**
-             * Maneja los eventos de teclado para cambiar de canal.
-             * @param {KeyboardEvent} e - El objeto del evento de teclado.
-             */
+
             function handleRemoteControl(e) {
-                // e.key es el estándar moderno. keyCode es por compatibilidad con dispositivos más antiguos.
                 const key = e.key || e.keyCode;
                 let newIndex = currentChannelIndex;
                 const totalChannels = channels.length;
 
-                // Mapeo de teclas comunes en controles remotos
                 switch (key) {
-                    case 'ArrowUp':
-                    case 'ChannelUp': // Estándar W3C para TV
-                    case 33: // Page Up (a veces usado para Channel Up)
-                        newIndex++;
-                        if (newIndex >= totalChannels) newIndex = 0; // Cíclico
+                    case 'ArrowUp': case 'ChannelUp': case 33:
+                        newIndex = (currentChannelIndex + 1) % totalChannels;
                         break;
                     
-                    case 'ArrowDown':
-                    case 'ChannelDown': // Estándar W3C para TV
-                    case 34: // Page Down (a veces usado para Channel Down)
-                        newIndex--;
-                        if (newIndex < 0) newIndex = totalChannels - 1; // Cíclico
+                    case 'ArrowDown': case 'ChannelDown': case 34:
+                        newIndex = (currentChannelIndex - 1 + totalChannels) % totalChannels;
                         break;
                     
                     default:
-                        return; // Salir si no es una tecla de interés
+                        return;
                 }
                 
-                e.preventDefault(); // Evita el comportamiento por defecto del navegador (ej. scroll)
+                e.preventDefault();
 
                 if (newIndex !== currentChannelIndex) {
                     currentChannelIndex = newIndex;
@@ -206,12 +224,9 @@
                 }
             }
 
-            // Asigna el manejador de eventos al documento
             document.addEventListener('keydown', handleRemoteControl);
 
             // --- 4. INICIO DE LA APLICACIÓN ---
-            
-            // Carga el primer canal automáticamente al iniciar
             loadChannel(currentChannelIndex);
         });
     </script>

@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google TV App - Funcional</title>
+    <title>Google TV App - Robusto</title>
 
+    <!-- La importación del script se mantiene aquí -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
@@ -14,7 +16,7 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden;
-            background: radial-gradient(ellipse at center, #2c2c2c 0%, #000000 100%);
+            background: #000;
             font-family: 'Roboto', sans-serif;
             color: white;
         }
@@ -22,166 +24,129 @@
             width: 100vw; height: 100vh; object-fit: cover;
             background-color: transparent;
         }
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background-color: rgba(0, 0, 0, 0.75);
+            font-size: 3vw; text-align: center; padding: 20px;
+            z-index: 500;
+            box-sizing: border-box;
+        }
+        .overlay.hidden { display: none; }
+        .overlay button {
+            font-size: 2vw; padding: 15px 30px; margin-top: 20px;
+            border: 2px solid white; background-color: transparent; color: white;
+            cursor: pointer;
+        }
         #channel-info {
             position: absolute; top: 8%; left: 50%;
-            transform: translateX(-50%) scale(0.95);
+            transform: translateX(-50%);
             background-color: rgba(20, 20, 20, 0.85);
             padding: 15px 40px; border-radius: 8px;
-            font-size: 42px; font-weight: 500;
-            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.7);
+            font-size: 2.5vw;
             z-index: 1000;
-            opacity: 0; pointer-events: none;
-            transition: opacity 0.4s ease-out, transform 0.4s ease-out;
-            text-align: center;
+            opacity: 0; transition: opacity 0.4s ease-out;
         }
-        #channel-info.visible {
-            opacity: 1; transform: translateX(-50%) scale(1);
-        }
-        #error-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; justify-content: center; align-items: center;
-            background-color: rgba(0, 0, 0, 0.7);
-            font-size: 32px; text-align: center; padding: 20px;
-            z-index: 500;
-            display: none; /* Oculto por defecto */
-        }
+        #channel-info.visible { opacity: 1; }
         .loader {
             position: absolute; top: 50%; left: 50%;
-            width: 60px; height: 60px;
-            border: 7px solid #f3f3f3;
-            border-top: 7px solid #3498db;
-            border-radius: 50%;
-            z-index: 1001;
-            animation: spin 1s linear infinite;
+            width: 60px; height: 60px; border: 7px solid #f3f3f3;
+            border-top: 7px solid #3498db; border-radius: 50%;
+            z-index: 1001; animation: spin 1s linear infinite;
             transform: translate(-50%, -50%);
-            opacity: 0; transition: opacity 0.3s;
+            display: none;
         }
-        .loader.visible { opacity: 1; }
-        @keyframes spin {
-            0% { transform: translate(-50%, -50%) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
+        .loader.visible { display: block; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <video id="videoPlayer" autoplay muted playsinline></video>
+    <video id="videoPlayer" playsinline></video>
     <div id="loader" class="loader"></div>
     <div id="channel-info"><span id="channel-name"></span></div>
-    <div id="error-overlay"></div>
+    <div id="status-overlay" class="overlay">
+        <p id="status-message">Iniciando aplicación...</p>
+        <button id="play-button" style="display: none;">Iniciar Reproducción</button>
+    </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Referencias a todos los elementos
             const videoElement = document.getElementById('videoPlayer');
+            const loader = document.getElementById('loader');
+            const statusOverlay = document.getElementById('status-overlay');
+            const statusMessage = document.getElementById('status-message');
+            const playButton = document.getElementById('play-button');
             const channelInfo = document.getElementById('channel-info');
             const channelNameElement = document.getElementById('channel-name');
-            const loader = document.getElementById('loader');
-            const errorOverlay = document.getElementById('error-overlay');
-
-            // --- CANALES FUNCIONALES CON CORS ABIERTO ---
-            // Estos canales SÍ deberían funcionar en GitHub Pages.
+            
+            // Canales de prueba que sabemos que funcionan
             const channels = [
-                {
-                    name: "Pluto TV Cine Estelar",
-                    url: "https://service-stitcher.clusters.pluto.tv/v1/stitch/embed/hls/channel/5d548f95c18c3900096696d5/master.m3u8?advertisingId=&appName=rokuchannel&appVersion=1.0&bmodel=plex&channel_id=5d548f95c18c3900096696d5&content_type=live-channel&deviceDNT=0&deviceId=channel-feed&deviceMake=roku&deviceModel=plex&deviceType=roku&deviceVersion=1.0&embedPartner=plex&is_lat=false&platform=web&tags=",
-                    type: "hls"
-                },
-                {
-                    name: "France 24 English",
-                    url: "https://f24.live.streaming.meta.com/Content/HLS/Live/channel(fra24_en)/index.m3u8",
-                    type: "hls"
-                },
-                {
-                    name: "Canal Original (Posiblemente falle)",
-                    url: "https://sae11.playlist.live-video.net/v1/playlist/CssFNDy9bTZb6rNhCr7SXbXJvfPPGhhLJVHhFMHXnYcbFQeQrgOSZD-GUrCziHoiFzqfVt4hu9BHqn0nW6-BRY_3lIMZbFUqCjkOHi7n0gWrknY_1l2_Rt7lrL4l-Z9gnNoxRRQW1Qt8Q5Bgk9rF48fZ6qMyOREPSrT-R4T35Ew9eUVCb69wS2MM6ydq3EQ0YDQrVWvqllYRZgD6gn44NtMvq3QGYEo6ixdNbA3taq63fPQVkGl_hHxEnsfB6RWjmehNrkGxQ5ZdGH7M4jCDXfjUq96_vzyTmEAD1ipPLhO8p0nkFPS2izspQdeFO92tOF6y4OOIGGexh7cb9kp0dFdf4OMg8Ub9xy5FQ8sq_nvC50Jjck3Z60yNoQ5elZrrd8a1ExIK8EVEL5i9SdjJexH-sSjaOSwiXlC0xFq27_sPobcqROER_93LmOzAMvpJT49gIxerwNVTXTwQf7yFzeU-Iu1tvhXG7amP_Anp22wijZX1quEGkbS55x_WIeNd35kgOGgF3zve8N7LasLsC0qVoUWAOOg0bUcrSYN-yDA7hwp5xfubVAEu9gVCLT-l2kwsF4QhgrfYCiR8rgzUwRl-EqgDXRvzVUYPzZ12K_Wb4xrxw7ye9unL46T-lfTMQ4Hc-gjOUasKTnxKRRsqF5Xgy1Dp9GLuvlEF3m0lvJ7_UQof71cYkE_dvRwhuf3SCIe7OPA5UpOlg7YbYbYrCSHgOWAxAEFCY2lu1yadQYQQjzvrRdXEyv6gKLbWNT7qwStWpGwdG9LHCWg9tNVWgyXetHc7lEJH-59gP5460KFYG5JwukWb03zdGPzaq9d9eIBcc3O5LAhPNAajFWW7MKl6XZ1z7GRRBoHDoPeCdzs19nGPgiqWR4oJ3Ef5i_TAXapxZyK7fYpDorbnid1MOlTaEs4F9cQqhk37BFa_-_sDIzJhlazzKnKxCVZfZRoM-30Qe6_BHNx1Kgi4IAEqCXVzLWVhc3QtMjDgDA.m3u8",
-                    type: "hls"
-                }
+                { name: "Pluto TV Cine Estelar", url: "https://service-stitcher.clusters.pluto.tv/v1/stitch/embed/hls/channel/5d548f95c18c3900096696d5/master.m3u8?advertisingId=&appName=rokuchannel&appVersion=1.0&bmodel=plex&channel_id=5d548f95c18c3900096696d5&content_type=live-channel&deviceDNT=0&deviceId=channel-feed&deviceMake=roku&deviceModel=plex&deviceType=roku&deviceVersion=1.0&embedPartner=plex&is_lat=false&platform=web&tags=", type: "hls" },
+                { name: "France 24 English", url: "https://f24.live.streaming.meta.com/Content/HLS/Live/channel(fra24_en)/index.m3u8", type: "hls" }
             ];
 
             let currentChannelIndex = 0;
             let hls = null;
-            let channelInfoTimeout;
 
-            function showLoader() { loader.classList.add('visible'); }
-            function hideLoader() { loader.classList.remove('visible'); }
-            
-            function showChannelInfo(name, number) {
-                if (channelInfoTimeout) clearTimeout(channelInfoTimeout);
-                channelNameElement.textContent = `${number}. ${name}`;
-                channelInfo.classList.add('visible');
-                channelInfoTimeout = setTimeout(() => {
-                    channelInfo.classList.remove('visible');
-                }, 3500);
+            function showStatus(message, showButton = false) {
+                statusOverlay.classList.remove('hidden');
+                statusMessage.textContent = message;
+                playButton.style.display = showButton ? 'block' : 'none';
+                loader.classList.remove('visible');
             }
 
-            function showError(message) {
-                errorOverlay.textContent = message;
-                errorOverlay.style.display = 'flex';
-                hideLoader();
-            }
-
-            function hideError() {
-                errorOverlay.style.display = 'none';
+            // **VERIFICACIÓN CRÍTICA**
+            // Comprobamos si la librería Hls se ha cargado.
+            // `window.Hls` es la forma de acceder a la variable global.
+            if (typeof window.Hls === 'undefined') {
+                showStatus("Error Crítico: No se pudo cargar la librería de video (hls.js). Revise su conexión o bloqueadores de publicidad.");
+                return; // Detiene la ejecución si falta la librería.
             }
 
             function loadChannel(index) {
-                const channel = channels[index];
-                const channelNumber = index + 1;
-                
-                hideError();
-                showChannelInfo(channel.name, channelNumber);
-                showLoader();
-                videoElement.src = ''; // Detiene la carga anterior
-
                 if (hls) {
                     hls.destroy();
                 }
+                
+                statusOverlay.classList.add('hidden');
+                loader.classList.add('visible');
 
-                if (Hls.isSupported()) {
-                    hls = new Hls({
-                        // Configuraciones para robustecer la carga
-                        startLevel: 2, // Empezar con una calidad media
-                        maxBufferLength: 60, // Aumentar el buffer
-                    });
-                    hls.loadSource(channel.url);
-                    hls.attachMedia(videoElement);
+                const channel = channels[index];
+                channelNameElement.textContent = `${index + 1}. ${channel.name}`;
+                channelInfo.classList.add('visible');
+                setTimeout(() => channelInfo.classList.remove('visible'), 3500);
 
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        console.log("Manifiesto cargado, intentando reproducir.");
-                        videoElement.play().catch(e => {
-                            console.warn("La auto-reproducción fue bloqueada. Intentando reproducir con mute.");
-                            videoElement.muted = true;
-                            videoElement.play();
+                hls = new Hls();
+                hls.loadSource(channel.url);
+                hls.attachMedia(videoElement);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    const playPromise = videoElement.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            console.warn("Autoplay bloqueado:", error);
+                            showStatus("La reproducción automática fue bloqueada por el navegador. Presione el botón para iniciar.", true);
                         });
-                    });
+                    }
+                });
 
-                    hls.on(Hls.Events.ERROR, (event, data) => {
-                        if (data.fatal) {
-                            console.error(`Error fatal de HLS: ${data.details}`);
-                            // Si el error es de red, es muy probable que sea CORS.
-                            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                                showError(`Error al cargar el canal ${channelNumber}.\nEl servidor del canal (CORS) o tu conexión a internet podrían ser el problema.`);
-                            } else {
-                                showError(`No se pudo cargar el canal ${channelNumber}.`);
-                            }
-                        }
-                    });
-
-                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                    // Soporte nativo de HLS en navegadores como Safari
-                    videoElement.src = channel.url;
-                } else {
-                    showError("Tu navegador no soporta HLS, la tecnología necesaria para ver TV online.");
-                }
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        showStatus(`Error al cargar el canal: ${data.details}. Verifique la URL del canal o su conexión.`);
+                    }
+                });
             }
-            
-            videoElement.addEventListener('playing', hideLoader);
-            videoElement.addEventListener('waiting', showLoader);
-            videoElement.addEventListener('error', () => {
-                hideLoader();
-                // No mostrar error aquí para evitar sobreescribir el error de HLS.
+
+            videoElement.addEventListener('playing', () => {
+                loader.classList.remove('visible');
+                statusOverlay.classList.add('hidden');
             });
+            videoElement.addEventListener('waiting', () => loader.classList.add('visible'));
 
             function handleRemoteControl(e) {
+                if (!statusOverlay.classList.contains('hidden')) return; // No cambiar canal si hay un overlay
+
                 const key = e.key;
                 let newIndex = currentChannelIndex;
                 const totalChannels = channels.length;
@@ -193,19 +158,25 @@
                     case 'ArrowDown': case 'ChannelDown':
                         newIndex = (currentChannelIndex - 1 + totalChannels) % totalChannels;
                         break;
-                    default:
-                        return;
+                    default: return;
                 }
                 
                 e.preventDefault();
-
                 if (newIndex !== currentChannelIndex) {
                     currentChannelIndex = newIndex;
                     loadChannel(currentChannelIndex);
                 }
             }
+            
+            // El botón de play manual
+            playButton.addEventListener('click', () => {
+                videoElement.play();
+                statusOverlay.classList.add('hidden');
+            });
 
             document.addEventListener('keydown', handleRemoteControl);
+            
+            // Iniciar la aplicación
             loadChannel(currentChannelIndex);
         });
     </script>

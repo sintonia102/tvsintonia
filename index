@@ -3,87 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google TV App Plus</title>
+    <title>Google TV App - Funcional</title>
 
-    <!-- Importación de la librería hls.js para reproducir streams HLS -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
-    <!-- Importación de la fuente Roboto de Google Fonts para un mejor look & feel -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
 
     <style>
-        /* Reseteo básico y fondo mejorado */
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
+            margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden;
-            /* Gradiente radial sutil en lugar de negro sólido */
             background: radial-gradient(ellipse at center, #2c2c2c 0%, #000000 100%);
             font-family: 'Roboto', sans-serif;
-        }
-
-        /* El reproductor de video sigue ocupando toda la pantalla */
-        #videoPlayer {
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            background-color: transparent; /* Permite ver el gradiente del body si el video no carga */
-        }
-
-        /* --- Mejoras Visuales del Overlay de Canal --- */
-        #channel-info {
-            position: absolute;
-            top: 8%; /* Posicionado más arriba, estilo TV */
-            left: 50%;
-            transform: translateX(-50%) scale(0.95); /* Posición inicial para la animación */
-            background-color: rgba(20, 20, 20, 0.85);
             color: white;
-            padding: 15px 40px;
-            border-radius: 8px;
-            font-size: 42px;
-            font-weight: 500;
-            /* Sombra de texto para mejorar legibilidad sobre cualquier video */
+        }
+        #videoPlayer {
+            width: 100vw; height: 100vh; object-fit: cover;
+            background-color: transparent;
+        }
+        #channel-info {
+            position: absolute; top: 8%; left: 50%;
+            transform: translateX(-50%) scale(0.95);
+            background-color: rgba(20, 20, 20, 0.85);
+            padding: 15px 40px; border-radius: 8px;
+            font-size: 42px; font-weight: 500;
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.7);
             z-index: 1000;
-            opacity: 0;
-            pointer-events: none;
-            /* Transición suave para la animación de entrada/salida */
+            opacity: 0; pointer-events: none;
             transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+            text-align: center;
         }
-
-        /* Clase para mostrar el indicador con animación */
         #channel-info.visible {
-            opacity: 1;
-            transform: translateX(-50%) scale(1);
+            opacity: 1; transform: translateX(-50%) scale(1);
         }
-
-        /* --- Indicador de Carga (Spinner) --- */
+        #error-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            font-size: 32px; text-align: center; padding: 20px;
+            z-index: 500;
+            display: none; /* Oculto por defecto */
+        }
         .loader {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 60px;
-            height: 60px;
+            position: absolute; top: 50%; left: 50%;
+            width: 60px; height: 60px;
             border: 7px solid #f3f3f3;
-            border-top: 7px solid #3498db; /* Color azul para el spinner */
+            border-top: 7px solid #3498db;
             border-radius: 50%;
-            z-index: 1001; /* Por encima de todo */
-            /* Animación de giro */
+            z-index: 1001;
             animation: spin 1s linear infinite;
             transform: translate(-50%, -50%);
-            opacity: 0;
-            transition: opacity 0.3s;
+            opacity: 0; transition: opacity 0.3s;
         }
-        
-        .loader.visible {
-            opacity: 1;
-        }
-
-        /* Definición de la animación de giro */
+        .loader.visible { opacity: 1; }
         @keyframes spin {
             0% { transform: translate(-50%, -50%) rotate(0deg); }
             100% { transform: translate(-50%, -50%) rotate(360deg); }
@@ -91,36 +64,36 @@
     </style>
 </head>
 <body>
-
-    <!-- Elemento de video -->
-    <video id="videoPlayer" autoplay></video>
-
-    <!-- Indicador de Carga (Spinner) -->
+    <video id="videoPlayer" autoplay muted playsinline></video>
     <div id="loader" class="loader"></div>
-
-    <!-- Overlay de información del canal -->
-    <div id="channel-info">
-        <span id="channel-name"></span>
-    </div>
+    <div id="channel-info"><span id="channel-name"></span></div>
+    <div id="error-overlay"></div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- 1. CONFIGURACIÓN INICIAL ---
             const videoElement = document.getElementById('videoPlayer');
             const channelInfo = document.getElementById('channel-info');
             const channelNameElement = document.getElementById('channel-name');
             const loader = document.getElementById('loader');
+            const errorOverlay = document.getElementById('error-overlay');
 
+            // --- CANALES FUNCIONALES CON CORS ABIERTO ---
+            // Estos canales SÍ deberían funcionar en GitHub Pages.
             const channels = [
                 {
-                    name: "SAE Canal",
-                    url: "https://sae11.playlist.live-video.net/v1/playlist/CssFNDy9bTZb6rNhCr7SXbXJvfPPGhhLJVHhFMHXnYcbFQeQrgOSZD-GUrCziHoiFzqfVt4hu9BHqn0nW6-BRY_3lIMZbFUqCjkOHi7n0gWrknY_1l2_Rt7lrL4l-Z9gnNoxRRQW1Qt8Q5Bgk9rF48fZ6qMyOREPSrT-R4T35Ew9eUVCb69wS2MM6ydq3EQ0YDQrVWvqllYRZgD6gn44NtMvq3QGYEo6ixdNbA3taq63fPQVkGl_hHxEnsfB6RWjmehNrkGxQ5ZdGH7M4jCDXfjUq96_vzyTmEAD1ipPLhO8p0nkFPS2izspQdeFO92tOF6y4OOIGGexh7cb9kp0dFdf4OMg8Ub9xy5FQ8sq_nvC50Jjck3Z60yNoQ5elZrrd8a1ExIK8EVEL5i9SdjJexH-sSjaOSwiXlC0xFq27_sPobcqROER_93LmOzAMvpJT49gIxerwNVTXTwQf7yFzeU-Iu1tvhXG7amP_Anp22wijZX1quEGkbS55x_WIeNd35kgOGgF3zve8N7LasLsC0qVoUWAOOg0bUcrSYN-yDA7hwp5xfubVAEu9gVCLT-l2kwsF4QhgrfYCiR8rgzUwRl-EqgDXRvzVUYPzZ12K_Wb4xrxw7ye9unL46T-lfTMQ4Hc-gjOUasKTnxKRRsqF5Xgy1Dp9GLuvlEF3m0lvJ7_UQof71cYkE_dvRwhuf3SCIe7OPA5UpOlg7YbYbYrCSHgOWAxAEFCY2lu1yadQYQQjzvrRdXEyv6gKLbWNT7qwStWpGwdG9LHCWg9tNVWgyXetHc7lEJH-59gP5460KFYG5JwukWb03zdGPzaq9d9eIBcc3O5LAhPNAajFWW7MKl6XZ1z7GRRBoHDoPeCdzs19nGPgiqWR4oJ3Ef5i_TAXapxZyK7fYpDorbnid1MOlTaEs4F9cQqhk37BFa_-_sDIzJhlazzKnKxCVZfZRoM-30Qe6_BHNx1Kgi4IAEqCXVzLWVhc3QtMjDgDA.m3u8",
+                    name: "Pluto TV Cine Estelar",
+                    url: "https://service-stitcher.clusters.pluto.tv/v1/stitch/embed/hls/channel/5d548f95c18c3900096696d5/master.m3u8?advertisingId=&appName=rokuchannel&appVersion=1.0&bmodel=plex&channel_id=5d548f95c18c3900096696d5&content_type=live-channel&deviceDNT=0&deviceId=channel-feed&deviceMake=roku&deviceModel=plex&deviceType=roku&deviceVersion=1.0&embedPartner=plex&is_lat=false&platform=web&tags=",
                     type: "hls"
                 },
                 {
-                    name: "Sintonía TV",
-                    url: "https://stream-cdn-iad3.vaughnsoft.net/play/live_sintonia.flv",
-                    type: "flv"
+                    name: "France 24 English",
+                    url: "https://f24.live.streaming.meta.com/Content/HLS/Live/channel(fra24_en)/index.m3u8",
+                    type: "hls"
+                },
+                {
+                    name: "Canal Original (Posiblemente falle)",
+                    url: "https://sae11.playlist.live-video.net/v1/playlist/CssFNDy9bTZb6rNhCr7SXbXJvfPPGhhLJVHhFMHXnYcbFQeQrgOSZD-GUrCziHoiFzqfVt4hu9BHqn0nW6-BRY_3lIMZbFUqCjkOHi7n0gWrknY_1l2_Rt7lrL4l-Z9gnNoxRRQW1Qt8Q5Bgk9rF48fZ6qMyOREPSrT-R4T35Ew9eUVCb69wS2MM6ydq3EQ0YDQrVWvqllYRZgD6gn44NtMvq3QGYEo6ixdNbA3taq63fPQVkGl_hHxEnsfB6RWjmehNrkGxQ5ZdGH7M4jCDXfjUq96_vzyTmEAD1ipPLhO8p0nkFPS2izspQdeFO92tOF6y4OOIGGexh7cb9kp0dFdf4OMg8Ub9xy5FQ8sq_nvC50Jjck3Z60yNoQ5elZrrd8a1ExIK8EVEL5i9SdjJexH-sSjaOSwiXlC0xFq27_sPobcqROER_93LmOzAMvpJT49gIxerwNVTXTwQf7yFzeU-Iu1tvhXG7amP_Anp22wijZX1quEGkbS55x_WIeNd35kgOGgF3zve8N7LasLsC0qVoUWAOOg0bUcrSYN-yDA7hwp5xfubVAEu9gVCLT-l2kwsF4QhgrfYCiR8rgzUwRl-EqgDXRvzVUYPzZ12K_Wb4xrxw7ye9unL46T-lfTMQ4Hc-gjOUasKTnxKRRsqF5Xgy1Dp9GLuvlEF3m0lvJ7_UQof71cYkE_dvRwhuf3SCIe7OPA5UpOlg7YbYbYrCSHgOWAxAEFCY2lu1yadQYQQjzvrRdXEyv6gKLbWNT7qwStWpGwdG9LHCWg9tNVWgyXetHc7lEJH-59gP5460KFYG5JwukWb03zdGPzaq9d9eIBcc3O5LAhPNAajFWW7MKl6XZ1z7GRRBoHDoPeCdzs19nGPgiqWR4oJ3Ef5i_TAXapxZyK7fYpDorbnid1MOlTaEs4F9cQqhk37BFa_-_sDIzJhlazzKnKxCVZfZRoM-30Qe6_BHNx1Kgi4IAEqCXVzLWVhc3QtMjDgDA.m3u8",
+                    type: "hls"
                 }
             ];
 
@@ -128,90 +101,98 @@
             let hls = null;
             let channelInfoTimeout;
 
-            // --- 2. LÓGICA DE REPRODUCTOR Y UI ---
-
             function showLoader() { loader.classList.add('visible'); }
             function hideLoader() { loader.classList.remove('visible'); }
             
             function showChannelInfo(name, number) {
-                if (channelInfoTimeout) {
-                    clearTimeout(channelInfoTimeout);
-                }
-                
-                let displayText = `${number}. ${name}`;
-                if (name.includes("no compatible")) {
-                    displayText = `${number}. ${name}`;
-                }
-
-                channelNameElement.textContent = displayText;
+                if (channelInfoTimeout) clearTimeout(channelInfoTimeout);
+                channelNameElement.textContent = `${number}. ${name}`;
                 channelInfo.classList.add('visible');
-
                 channelInfoTimeout = setTimeout(() => {
                     channelInfo.classList.remove('visible');
-                }, 3500); // Un poco más de tiempo en pantalla
+                }, 3500);
+            }
+
+            function showError(message) {
+                errorOverlay.textContent = message;
+                errorOverlay.style.display = 'flex';
+                hideLoader();
+            }
+
+            function hideError() {
+                errorOverlay.style.display = 'none';
             }
 
             function loadChannel(index) {
                 const channel = channels[index];
                 const channelNumber = index + 1;
+                
+                hideError();
                 showChannelInfo(channel.name, channelNumber);
                 showLoader();
+                videoElement.src = ''; // Detiene la carga anterior
 
                 if (hls) {
                     hls.destroy();
-                    hls = null;
                 }
 
-                if (channel.type === 'hls' && Hls.isSupported()) {
+                if (Hls.isSupported()) {
                     hls = new Hls({
-                        // Empieza a cargar el video un poco antes para un inicio más rápido
-                        fragLoadingMaxRetry: 4,
-                        manifestLoadingMaxRetry: 4
+                        // Configuraciones para robustecer la carga
+                        startLevel: 2, // Empezar con una calidad media
+                        maxBufferLength: 60, // Aumentar el buffer
                     });
                     hls.loadSource(channel.url);
                     hls.attachMedia(videoElement);
+
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        console.log("Manifiesto cargado, intentando reproducir.");
+                        videoElement.play().catch(e => {
+                            console.warn("La auto-reproducción fue bloqueada. Intentando reproducir con mute.");
+                            videoElement.muted = true;
+                            videoElement.play();
+                        });
+                    });
+
                     hls.on(Hls.Events.ERROR, (event, data) => {
                         if (data.fatal) {
-                            console.error('Error fatal de HLS:', data.type, data.details);
-                            hideLoader();
+                            console.error(`Error fatal de HLS: ${data.details}`);
+                            // Si el error es de red, es muy probable que sea CORS.
+                            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                                showError(`Error al cargar el canal ${channelNumber}.\nEl servidor del canal (CORS) o tu conexión a internet podrían ser el problema.`);
+                            } else {
+                                showError(`No se pudo cargar el canal ${channelNumber}.`);
+                            }
                         }
                     });
-                } else if (channel.type === 'flv') {
-                    console.warn("Intentando cargar FLV. Es muy probable que no funcione.");
+
+                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Soporte nativo de HLS en navegadores como Safari
                     videoElement.src = channel.url;
-                    showChannelInfo(`${channel.name} (Formato no compatible)`, channelNumber);
                 } else {
-                    console.error("HLS no es soportado en este navegador.");
-                    showChannelInfo("Error: HLS no soportado", channelNumber);
-                    hideLoader();
+                    showError("Tu navegador no soporta HLS, la tecnología necesaria para ver TV online.");
                 }
             }
-
-            // --- 3. MANEJO DE EVENTOS ---
             
-            // Eventos del reproductor para manejar el spinner
             videoElement.addEventListener('playing', hideLoader);
             videoElement.addEventListener('waiting', showLoader);
             videoElement.addEventListener('error', () => {
                 hideLoader();
-                console.error("Error en el elemento de video.");
+                // No mostrar error aquí para evitar sobreescribir el error de HLS.
             });
 
-
             function handleRemoteControl(e) {
-                const key = e.key || e.keyCode;
+                const key = e.key;
                 let newIndex = currentChannelIndex;
                 const totalChannels = channels.length;
 
                 switch (key) {
-                    case 'ArrowUp': case 'ChannelUp': case 33:
+                    case 'ArrowUp': case 'ChannelUp':
                         newIndex = (currentChannelIndex + 1) % totalChannels;
                         break;
-                    
-                    case 'ArrowDown': case 'ChannelDown': case 34:
+                    case 'ArrowDown': case 'ChannelDown':
                         newIndex = (currentChannelIndex - 1 + totalChannels) % totalChannels;
                         break;
-                    
                     default:
                         return;
                 }
@@ -225,11 +206,8 @@
             }
 
             document.addEventListener('keydown', handleRemoteControl);
-
-            // --- 4. INICIO DE LA APLICACIÓN ---
             loadChannel(currentChannelIndex);
         });
     </script>
-
 </body>
 </html>

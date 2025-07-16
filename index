@@ -2,183 +2,22 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google TV App - Robusto</title>
-
-    <!-- La importación del script se mantiene aquí -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap" rel="stylesheet">
-
+    <title>Prueba de Diagnóstico</title>
     <style>
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden;
-            background: #000;
-            font-family: 'Roboto', sans-serif;
-            color: white;
+        body {
+            background-color: #0000FF; /* Fondo azul brillante */
+            color: #FFFFFF; /* Texto blanco */
+            font-family: sans-serif;
+            font-size: 8vw; /* Texto muy grande */
+            text-align: center;
+            padding-top: 20%;
         }
-        #videoPlayer {
-            width: 100vw; height: 100vh; object-fit: cover;
-            background-color: transparent;
-        }
-        .overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            background-color: rgba(0, 0, 0, 0.75);
-            font-size: 3vw; text-align: center; padding: 20px;
-            z-index: 500;
-            box-sizing: border-box;
-        }
-        .overlay.hidden { display: none; }
-        .overlay button {
-            font-size: 2vw; padding: 15px 30px; margin-top: 20px;
-            border: 2px solid white; background-color: transparent; color: white;
-            cursor: pointer;
-        }
-        #channel-info {
-            position: absolute; top: 8%; left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(20, 20, 20, 0.85);
-            padding: 15px 40px; border-radius: 8px;
-            font-size: 2.5vw;
-            z-index: 1000;
-            opacity: 0; transition: opacity 0.4s ease-out;
-        }
-        #channel-info.visible { opacity: 1; }
-        .loader {
-            position: absolute; top: 50%; left: 50%;
-            width: 60px; height: 60px; border: 7px solid #f3f3f3;
-            border-top: 7px solid #3498db; border-radius: 50%;
-            z-index: 1001; animation: spin 1s linear infinite;
-            transform: translate(-50%, -50%);
-            display: none;
-        }
-        .loader.visible { display: block; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <video id="videoPlayer" playsinline></video>
-    <div id="loader" class="loader"></div>
-    <div id="channel-info"><span id="channel-name"></span></div>
-    <div id="status-overlay" class="overlay">
-        <p id="status-message">Iniciando aplicación...</p>
-        <button id="play-button" style="display: none;">Iniciar Reproducción</button>
-    </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Referencias a todos los elementos
-            const videoElement = document.getElementById('videoPlayer');
-            const loader = document.getElementById('loader');
-            const statusOverlay = document.getElementById('status-overlay');
-            const statusMessage = document.getElementById('status-message');
-            const playButton = document.getElementById('play-button');
-            const channelInfo = document.getElementById('channel-info');
-            const channelNameElement = document.getElementById('channel-name');
-            
-            // Canales de prueba que sabemos que funcionan
-            const channels = [
-                { name: "Pluto TV Cine Estelar", url: "https://service-stitcher.clusters.pluto.tv/v1/stitch/embed/hls/channel/5d548f95c18c3900096696d5/master.m3u8?advertisingId=&appName=rokuchannel&appVersion=1.0&bmodel=plex&channel_id=5d548f95c18c3900096696d5&content_type=live-channel&deviceDNT=0&deviceId=channel-feed&deviceMake=roku&deviceModel=plex&deviceType=roku&deviceVersion=1.0&embedPartner=plex&is_lat=false&platform=web&tags=", type: "hls" },
-                { name: "France 24 English", url: "https://f24.live.streaming.meta.com/Content/HLS/Live/channel(fra24_en)/index.m3u8", type: "hls" }
-            ];
+    <p>¡Hola, Mundo!</p>
+    <p>Si ves esto, GitHub funciona.</p>
 
-            let currentChannelIndex = 0;
-            let hls = null;
-
-            function showStatus(message, showButton = false) {
-                statusOverlay.classList.remove('hidden');
-                statusMessage.textContent = message;
-                playButton.style.display = showButton ? 'block' : 'none';
-                loader.classList.remove('visible');
-            }
-
-            // **VERIFICACIÓN CRÍTICA**
-            // Comprobamos si la librería Hls se ha cargado.
-            // `window.Hls` es la forma de acceder a la variable global.
-            if (typeof window.Hls === 'undefined') {
-                showStatus("Error Crítico: No se pudo cargar la librería de video (hls.js). Revise su conexión o bloqueadores de publicidad.");
-                return; // Detiene la ejecución si falta la librería.
-            }
-
-            function loadChannel(index) {
-                if (hls) {
-                    hls.destroy();
-                }
-                
-                statusOverlay.classList.add('hidden');
-                loader.classList.add('visible');
-
-                const channel = channels[index];
-                channelNameElement.textContent = `${index + 1}. ${channel.name}`;
-                channelInfo.classList.add('visible');
-                setTimeout(() => channelInfo.classList.remove('visible'), 3500);
-
-                hls = new Hls();
-                hls.loadSource(channel.url);
-                hls.attachMedia(videoElement);
-
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    const playPromise = videoElement.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(error => {
-                            console.warn("Autoplay bloqueado:", error);
-                            showStatus("La reproducción automática fue bloqueada por el navegador. Presione el botón para iniciar.", true);
-                        });
-                    }
-                });
-
-                hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal) {
-                        showStatus(`Error al cargar el canal: ${data.details}. Verifique la URL del canal o su conexión.`);
-                    }
-                });
-            }
-
-            videoElement.addEventListener('playing', () => {
-                loader.classList.remove('visible');
-                statusOverlay.classList.add('hidden');
-            });
-            videoElement.addEventListener('waiting', () => loader.classList.add('visible'));
-
-            function handleRemoteControl(e) {
-                if (!statusOverlay.classList.contains('hidden')) return; // No cambiar canal si hay un overlay
-
-                const key = e.key;
-                let newIndex = currentChannelIndex;
-                const totalChannels = channels.length;
-
-                switch (key) {
-                    case 'ArrowUp': case 'ChannelUp':
-                        newIndex = (currentChannelIndex + 1) % totalChannels;
-                        break;
-                    case 'ArrowDown': case 'ChannelDown':
-                        newIndex = (currentChannelIndex - 1 + totalChannels) % totalChannels;
-                        break;
-                    default: return;
-                }
-                
-                e.preventDefault();
-                if (newIndex !== currentChannelIndex) {
-                    currentChannelIndex = newIndex;
-                    loadChannel(currentChannelIndex);
-                }
-            }
-            
-            // El botón de play manual
-            playButton.addEventListener('click', () => {
-                videoElement.play();
-                statusOverlay.classList.add('hidden');
-            });
-
-            document.addEventListener('keydown', handleRemoteControl);
-            
-            // Iniciar la aplicación
-            loadChannel(currentChannelIndex);
-        });
-    </script>
 </body>
 </html>
